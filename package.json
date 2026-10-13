@@ -1,0 +1,32 @@
+{
+  "name": "pi-quota-paseo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Paseo usage source bridging pi-quota adapters (Pi provider quota in Paseo's native usage UI)",
+  "files": [
+    "paseo-plugin.json",
+    "index.server.ts",
+    "server",
+    "shared",
+    "icon.svg",
+    "OVERVIEW.md",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@astrosheep/pi-quota": "file:../../pi-extensions/pi-quota",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "^0.11.2",
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3"
+  }
+}
