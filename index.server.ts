@@ -1,15 +1,21 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { inputSchema } from "./shared/input.ts";
-import { discover, fetchUsage } from "./server/usage.ts";
+import { resolveAgentDir } from "./server/settings.ts";
+import { buildSourcePlan, registerSources } from "./server/sources.ts";
 
 export default function contribute(server: PluginServerContext) {
-  server.registerUsageSource({
-    id: "pi-quota",
-    label: "Pi Quota",
-    icon: "icon.svg",
-    input: inputSchema,
-    discover: (scope) => discover(scope),
-    fetch: (input) => fetchUsage(input),
-  });
+  // Paseo bundles plugins as CommonJS and registration is synchronous.
+  // Only registration needs this snapshot; discovery/fetch still re-read.
+  let settings: unknown = {};
+  try {
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    );
+    settings = JSON.parse(readFileSync(join(resolveAgentDir(env), "settings.json"), "utf8"));
+  } catch {
+    // Built-in sources still register; the catch-all discovers later additions.
+  }
+  registerSources(server, buildSourcePlan(settings));
   return () => {};
 }

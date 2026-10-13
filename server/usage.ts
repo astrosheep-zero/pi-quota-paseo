@@ -96,7 +96,18 @@ function accountKey(provider: string, auth: PiAuthReady, agentDir: string): stri
   return hashAccountKey(auth.credentials);
 }
 
-export async function discover(scope: UsageScope, deps: UsageDeps = {}): Promise<UsageAccount[]> {
+export interface DiscoverOptions {
+  /** Restrict which providers get enumerated (per-provider sources use this). */
+  includeProvider?: (provider: string) => boolean;
+  /** Omit account labels; per-provider cards already title the source label. */
+  dropAccountLabels?: boolean;
+}
+
+export async function discover(
+  scope: UsageScope,
+  deps: UsageDeps = {},
+  options: DiscoverOptions = {},
+): Promise<UsageAccount[]> {
   const env = scope.kind === "session" ? scope.env : (deps.env ?? processEnvRecord());
   const agentDir = resolveAgentDir(env);
   const readSettings = deps.readSettings ?? readPiSettings;
@@ -107,6 +118,7 @@ export async function discover(scope: UsageScope, deps: UsageDeps = {}): Promise
   const hidden = new Set(pluginConfig.hide);
   const { registry, aliases } = safeCompose(settings);
   const settingsBacked = settingsBackedProviders(settings);
+  const include = options.includeProvider;
 
   let providers: string[];
   if (scope.kind === "global") {
@@ -115,11 +127,20 @@ export async function discover(scope: UsageScope, deps: UsageDeps = {}): Promise
     providers = registry
       .list()
       .map((adapter) => adapter.provider)
-      .filter((provider) => aliases[provider] === undefined && !hidden.has(provider));
+      .filter(
+        (provider) =>
+          aliases[provider] === undefined && !hidden.has(provider) && (include?.(provider) ?? true),
+      );
   } else {
     if (scope.provider !== "pi") return [];
     const provider = scope.model?.split("/")[0];
-    if (provider === undefined || hidden.has(provider) || !registry.get(provider)) return [];
+    if (
+      provider === undefined ||
+      hidden.has(provider) ||
+      !registry.get(provider) ||
+      !(include?.(provider) ?? true)
+    )
+      return [];
     providers = [provider];
   }
 
@@ -132,7 +153,7 @@ export async function discover(scope: UsageScope, deps: UsageDeps = {}): Promise
     if (settingsBacked.has(provider)) {
       accounts.push({
         key: hashAccountKey(`settings:${provider}@${agentDir}`),
-        label: adapter.label,
+        ...(options.dropAccountLabels ? {} : { label: adapter.label }),
         harness: "Pi",
         input,
       });
@@ -151,12 +172,25 @@ export async function discover(scope: UsageScope, deps: UsageDeps = {}): Promise
     if (!auth) continue;
     accounts.push({
       key: accountKey(authProvider, auth, agentDir),
-      label: adapter.label,
+      ...(options.dropAccountLabels ? {} : { label: adapter.label }),
       harness: "Pi",
       input,
     });
   }
   return accounts;
+}
+
+/**
+ * Providers to register sources for at plugin load: the registry minus
+ * absorbed aliases. The hide list is intentionally not applied — hiding stays
+ * a discover-time decision so config edits take effect without a reload.
+ */
+export function listLoadProviders(settings: unknown): { provider: string; label: string }[] {
+  const { registry, aliases } = safeCompose(settings);
+  return registry
+    .list()
+    .map((adapter) => ({ provider: adapter.provider, label: adapter.label }))
+    .filter((entry) => aliases[entry.provider] === undefined);
 }
 
 function quotaErrorReport(code: QuotaErrorCode, retryAfterMs?: number): UsageReport {

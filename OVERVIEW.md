@@ -10,6 +10,10 @@ The plugin resolves credentials read-only through Pi's official CLI (`pi auth ch
 
 Session attribution uses the agent's launch environment: for a Pi agent, the plugin checks auth exactly as that session sees it and reports only the account behind the session's selected model.
 
+## Icons
+
+Each provider has its own source and icon: brand logos for Codex, Kimi, DeepSeek and OpenCode Go, colored pixel-initial tiles for other providers. Sources register when the plugin loads; later additions appear under a pixel-Pi catch-all until `paseo plugin reload pi-quota-paseo`.
+
 ## Configuration
 
 Hide providers from every view by creating `pi-quota-paseo.json` next to Pi's agent config (`~/.pi/agent/pi-quota-paseo.json` by default):

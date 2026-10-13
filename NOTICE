@@ -1,0 +1,16 @@
+Brand icons
+===========
+
+icons/brand/{codex,kimi,opencode}.svg are copied unchanged from
+https://github.com/getpaseo/paseo (plugins/*-usage-source/icon.svg).
+Copyright (c) 2025-present Mohamed Boudra.
+Apache License 2.0; the full license is in icons/brand/PASEO-LICENSE.
+
+icons/brand/deepseek.svg is from https://github.com/simple-icons/simple-icons,
+CC0-1.0 (https://creativecommons.org/publicdomain/zero/1.0/).
+Modified to use currentColor and remove the title/role attributes.
+
+The pixel Pi mark follows the Pi terminal logo's pixel grid and colors.
+All brand names and marks belong to their respective owners and identify the
+services whose quota is displayed; this plugin is not an official product of
+those services.

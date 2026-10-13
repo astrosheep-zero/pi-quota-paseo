@@ -4,9 +4,17 @@ A [Paseo](https://paseo.sh) **usage source plugin** that bridges [@astrosheep/pi
 
 - **Global discovery** lists every auth-ready provider: built-ins (`openai-codex`, `kimi-coding`, `opencode-go`, `deepseek`) plus everything bound under `quotaUsage.providers` in Pi's global `settings.json` (new-api / Sub2API / YesCode / exec / alias).
 - **Session discovery** (`provider: "pi"`) attributes the agent to the account behind its selected model, resolved against the session's own launch environment. Other harnesses get `[]`.
-- **Credentials** are resolved read-only via `pi auth check --provider <id> --credentials --no-refresh --json`; the plugin never parses or writes credential stores and never refreshes tokens.
+- **Credentials** are resolved read-only via `pi auth check --provider <id> --credentials --no-refresh --json`; the plugin never parses or writes credential stores. When an OAuth query rejects an expired login, it delegates refresh to `pi` itself and retries once.
 - **Account keys** are rotation-stable: ChatGPT account IDs from JWT claims when available, otherwise a hash of the API key or of the store locator. Credentials and raw emails never become keys or inputs.
 - **Relay endpoints** (new-api, Sub2API) come from each provider's `baseUrl` in Pi's `models.json`, mirroring the extension's model-registry resolution.
+
+## Icons
+
+Each provider gets its own usage source: Codex, Kimi, DeepSeek and OpenCode Go use brand logos; other providers use a white pixel initial on a rounded color tile. Colors are stable hashes of provider names (same initials may still share a color).
+
+Sources register at plugin load. Providers added later still appear automatically under a **Pi Quota** catch-all with the pixel Pi logo; run `paseo plugin reload pi-quota-paseo` to give them individual icons. Source IDs changed in 0.2.0, so existing usage pins may need re-pinning.
+
+Letter SVGs are prebuilt, font-free assets — nothing is written into an installed plugin directory. Regenerate them with `npm run generate-icons`. Icon attribution is in [NOTICE](./NOTICE).
 
 ## Configure
 
@@ -20,7 +28,7 @@ Re-read on every discovery; no reload needed. Set `PI_QUOTA_PASEO_PI` to overrid
 
 ## Develop
 
-Requires Node ≥ 22.18 (TypeScript runs via type stripping) and a local checkout of `pi-quota` (linked via `file:`).
+Requires Node ≥ 22.18. Quota adapters are a published dependency; no local `pi-quota` checkout is needed.
 
 ```bash
 npm install --ignore-scripts
