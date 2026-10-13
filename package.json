@@ -21,7 +21,7 @@
     "node": ">=22.18"
   },
   "dependencies": {
-    "@astrosheep/pi-quota": "file:../../pi-extensions/pi-quota",
+    "@astrosheep/pi-quota": "^0.12.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
