@@ -215,6 +215,61 @@ test("fetch without a configured baseUrl reports unsupported-auth without queryi
   assert.equal(requested.length, 0);
 });
 
+test("fetch self-heals an expired OAuth login by delegating refresh to the pi CLI", async () => {
+  const jwt = (id: string, tag: string) =>
+    `h.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: id } })).toString("base64url")}.${tag}`;
+  const stale = jwt("acct_test", "stale"), fresh = jwt("acct_test", "fresh");
+  const spawnModes: string[] = [];
+  const spawn: SpawnAuthCheck = async (args) => {
+    const refresh = !args.includes("--no-refresh");
+    spawnModes.push(refresh ? "refresh" : "read-only");
+    const token = refresh ? fresh : spawnModes.length > 2 ? fresh : stale;
+    return {
+      stdout: JSON.stringify({ status: "ready", provider: "openai-codex", authType: "oauth", credentials: token }),
+      code: 0,
+    };
+  };
+  const queried: string[] = [];
+  const getJson = async (url: string, headers: Record<string, string>) => {
+    queried.push(headers.Authorization ?? "");
+    if (headers.Authorization === `Bearer ${stale}`) {
+      const { QuotaError } = await import("@astrosheep/pi-quota/query");
+      throw new QuotaError("auth");
+    }
+    return { rate_limit: { primary_window: { limit_window_seconds: 18000, remaining_percent: 55 } } };
+  };
+  const report = await fetchUsage(
+    { provider: "openai-codex", agentDir: AGENT_DIR },
+    deps({ spawn, getJson }),
+  );
+  if (report.status !== "available") assert.fail(`expected available, got ${JSON.stringify(report)}`);
+  assert.equal(report.windows[0]!.usedPct, 45);
+  // read-only → CLI-refresh → read-only: the CLI wrote its own store, we never did.
+  assert.deepEqual(spawnModes, ["read-only", "refresh", "read-only"]);
+  assert.equal(queried.length, 2);
+});
+
+test("api-key auth failures never attempt a refresh", async () => {
+  const spawnModes: string[] = [];
+  const spawn: SpawnAuthCheck = async (args) => {
+    spawnModes.push(args.includes("--no-refresh") ? "read-only" : "refresh");
+    return readySpawn({ deepseek: "sk-dead" })(args, {});
+  };
+  const getJson = async () => {
+    const { QuotaError } = await import("@astrosheep/pi-quota/query");
+    throw new QuotaError("auth");
+  };
+  const report = await fetchUsage(
+    { provider: "deepseek", agentDir: AGENT_DIR },
+    deps({ spawn, getJson }),
+  );
+  assert.deepEqual(report, {
+    status: "unavailable",
+    problem: { kind: "rejected", status: 401, refreshedBy: "pi" },
+  });
+  assert.deepEqual(spawnModes, ["read-only"]);
+});
+
 test("fetch treats a dying pi auth check as an auth rejection (known limitation)", async () => {
   // officialAuth converts any getAuth failure into QuotaError('auth'), so a
   // missing pi binary surfaces as 'rejected' rather than a raw spawn error.

@@ -37,9 +37,14 @@ export async function checkProviderAuth(
   provider: string,
   env: Record<string, string>,
   spawn: SpawnAuthCheck = spawnAuthCheck,
+  options: { allowRefresh?: boolean } = {},
 ): Promise<PiAuthReady | null> {
   const { stdout } = await spawn(
-    ["auth", "check", "--provider", provider, "--credentials", "--no-refresh", "--json"],
+    [
+      "auth", "check", "--provider", provider, "--credentials",
+      ...(options.allowRefresh === true ? [] : ["--no-refresh"]),
+      "--json",
+    ],
     env,
   );
   let report: unknown;

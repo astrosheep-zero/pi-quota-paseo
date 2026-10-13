@@ -6,7 +6,7 @@ Accounts come from the same place the pi-quota extension uses: Pi's built-in Cod
 
 ## How it works
 
-The plugin resolves credentials read-only through Pi's official CLI (`pi auth check --credentials --no-refresh`) and re-reads Pi's settings file on every fetch, so token rotation and settings edits take effect without reinstalling anything. It never writes credential stores and never refreshes tokens itself; a login that needs a refresh shows Paseo's standard remedy pointing at the `pi` CLI.
+The plugin resolves credentials read-only through Pi's official CLI (`pi auth check --credentials --no-refresh`) and re-reads Pi's settings file on every fetch, so token rotation and settings edits take effect without reinstalling anything. It never writes credential stores. When an expired OAuth login rejects a query, the plugin lets the `pi` CLI itself refresh the login (the CLI writes its own store) and retries once, so quota keeps showing between CLI sessions instead of going stale with a sign-in prompt.
 
 Session attribution uses the agent's launch environment: for a Pi agent, the plugin checks auth exactly as that session sees it and reports only the account behind the session's selected model.
 

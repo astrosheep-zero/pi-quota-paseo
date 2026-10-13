@@ -203,13 +203,15 @@ export async function fetchUsage(value: unknown, deps: UsageDeps = {}): Promise<
   // the model registry.
   const baseUrls = await (deps.readBaseUrls ?? readProviderBaseUrls)(input.agentDir);
   const env = { ...(deps.env ?? processEnvRecord()), PI_CODING_AGENT_DIR: input.agentDir };
-  const snapshot = await adapter.query({
+  let lastAuth: { provider: string; authType: string } | undefined;
+  const queryContext = {
     provider: input.provider,
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     now: deps.now ?? Date.now,
-    async getAuth(provider) {
+    async getAuth(provider: string) {
       const auth = await checkProviderAuth(provider, env, spawn);
       if (!auth) return undefined;
+      lastAuth = { provider, authType: auth.authType };
       const baseUrl = baseUrls[provider];
       return baseUrl === undefined
         ? { apiKey: auth.credentials }
@@ -217,7 +219,23 @@ export async function fetchUsage(value: unknown, deps: UsageDeps = {}): Promise<
     },
     getJson: deps.getJson ?? createJsonClient(),
     postJson: deps.postJson ?? createPostJsonClient(),
-  }).catch((error: unknown) => {
+  };
+  const snapshot = await (async () => {
+    try {
+      return await adapter.query(queryContext);
+    } catch (error) {
+      // Self-heal: an expired OAuth login may only need the rotation the owning
+      // CLI performs on every use. Delegate the refresh to `pi` itself — the
+      // CLI writes its own store, we never do — then retry exactly once.
+      if (!(error instanceof QuotaError) || error.code !== "auth" || lastAuth?.authType !== "oauth")
+        throw error;
+      const refreshed = await checkProviderAuth(lastAuth.provider, env, spawn, {
+        allowRefresh: true,
+      }).catch(() => null);
+      if (!refreshed || refreshed.authType !== "oauth") throw error;
+      return adapter.query(queryContext);
+    }
+  })().catch((error: unknown) => {
     if (error instanceof QuotaError) return quotaErrorReport(error.code, error.retryAfterMs);
     throw error;
   });
