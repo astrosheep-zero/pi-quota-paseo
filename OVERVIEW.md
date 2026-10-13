@@ -10,6 +10,16 @@ The plugin resolves credentials read-only through Pi's official CLI (`pi auth ch
 
 Session attribution uses the agent's launch environment: for a Pi agent, the plugin checks auth exactly as that session sees it and reports only the account behind the session's selected model.
 
+## Configuration
+
+Hide providers from every view by creating `pi-quota-paseo.json` next to Pi's agent config (`~/.pi/agent/pi-quota-paseo.json` by default):
+
+```json
+{ "hide": ["kimi-coding"] }
+```
+
+The file is re-read on every discovery, so changes apply the next time the usage view refreshes. Relay providers (new-api, Sub2API) resolve their query endpoint from the provider's `baseUrl` in Pi's `models.json`, the same source the Pi extension uses.
+
 ## Requirements
 
 - Paseo 0.11 or newer.
@@ -18,6 +28,5 @@ Session attribution uses the agent's launch environment: for a Pi agent, the plu
 
 ## Known limits
 
-- Providers authenticated with a custom `baseUrl` are queried against the adapter's official endpoint, which may fail; the card shows the provider's error.
 - Sessions authenticated purely through environment variables (no credential store) discover normally but their fetch reports the login as rejected, because the store cannot be re-read later.
 - Balances in currencies other than USD appear as detail rows, since Paseo balance meters only support usd, credits, requests and tokens.

@@ -6,6 +6,17 @@ A [Paseo](https://paseo.sh) **usage source plugin** that bridges [@astrosheep/pi
 - **Session discovery** (`provider: "pi"`) attributes the agent to the account behind its selected model, resolved against the session's own launch environment. Other harnesses get `[]`.
 - **Credentials** are resolved read-only via `pi auth check --provider <id> --credentials --no-refresh --json`; the plugin never parses or writes credential stores and never refreshes tokens.
 - **Account keys** are rotation-stable: ChatGPT account IDs from JWT claims when available, otherwise a hash of the API key or of the store locator. Credentials and raw emails never become keys or inputs.
+- **Relay endpoints** (new-api, Sub2API) come from each provider's `baseUrl` in Pi's `models.json`, mirroring the extension's model-registry resolution.
+
+## Configure
+
+Hide providers from all views with `~/.pi/agent/pi-quota-paseo.json` (resolved from the same agent directory Pi uses):
+
+```json
+{ "hide": ["kimi-coding"] }
+```
+
+Re-read on every discovery; no reload needed. Set `PI_QUOTA_PASEO_PI` to override the `pi` binary.
 
 ## Develop
 

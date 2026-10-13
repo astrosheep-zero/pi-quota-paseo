@@ -12,12 +12,23 @@ import {
 } from "@astrosheep/pi-quota/query";
 import { inputSchema } from "../shared/input.ts";
 import { checkProviderAuth, spawnAuthCheck, type PiAuthReady, type SpawnAuthCheck } from "./pi-auth.ts";
-import { readPiSettings, resolveAgentDir, type ReadSettings } from "./settings.ts";
+import {
+  readPiSettings,
+  readPluginConfig,
+  readProviderBaseUrls,
+  resolveAgentDir,
+  type ReadPluginConfig,
+  type ReadSettings,
+} from "./settings.ts";
 import { snapshotToReport } from "./report.ts";
 
 export interface UsageDeps {
   spawn?: SpawnAuthCheck;
   readSettings?: ReadSettings;
+  readPluginConfig?: ReadPluginConfig;
+  readBaseUrls?: (agentDir: string) => Promise<Record<string, string>>;
+  getJson?: ReturnType<typeof createJsonClient>;
+  postJson?: ReturnType<typeof createPostJsonClient>;
   env?: Record<string, string>;
   now?: () => number;
 }
@@ -89,7 +100,11 @@ export async function discover(scope: UsageScope, deps: UsageDeps = {}): Promise
   const env = scope.kind === "session" ? scope.env : (deps.env ?? processEnvRecord());
   const agentDir = resolveAgentDir(env);
   const readSettings = deps.readSettings ?? readPiSettings;
-  const settings = await readSettings(agentDir);
+  const [settings, pluginConfig] = await Promise.all([
+    readSettings(agentDir),
+    (deps.readPluginConfig ?? readPluginConfig)(agentDir),
+  ]);
+  const hidden = new Set(pluginConfig.hide);
   const { registry, aliases } = safeCompose(settings);
   const settingsBacked = settingsBackedProviders(settings);
 
@@ -100,11 +115,11 @@ export async function discover(scope: UsageScope, deps: UsageDeps = {}): Promise
     providers = registry
       .list()
       .map((adapter) => adapter.provider)
-      .filter((provider) => aliases[provider] === undefined);
+      .filter((provider) => aliases[provider] === undefined && !hidden.has(provider));
   } else {
     if (scope.provider !== "pi") return [];
     const provider = scope.model?.split("/")[0];
-    if (provider === undefined || !registry.get(provider)) return [];
+    if (provider === undefined || hidden.has(provider) || !registry.get(provider)) return [];
     providers = [provider];
   }
 
@@ -183,6 +198,10 @@ export async function fetchUsage(value: unknown, deps: UsageDeps = {}): Promise<
   if (!adapter) throw new Error(`Provider ${input.provider} no longer has a quota adapter`);
 
   const spawn = deps.spawn ?? spawnAuthCheck;
+  // Relay adapters (new-api, Sub2API) build their query URL from the
+  // provider's configured baseUrl, exactly as the extension resolves it from
+  // the model registry.
+  const baseUrls = await (deps.readBaseUrls ?? readProviderBaseUrls)(input.agentDir);
   const env = { ...(deps.env ?? processEnvRecord()), PI_CODING_AGENT_DIR: input.agentDir };
   const snapshot = await adapter.query({
     provider: input.provider,
@@ -190,10 +209,14 @@ export async function fetchUsage(value: unknown, deps: UsageDeps = {}): Promise<
     now: deps.now ?? Date.now,
     async getAuth(provider) {
       const auth = await checkProviderAuth(provider, env, spawn);
-      return auth ? { apiKey: auth.credentials } : undefined;
+      if (!auth) return undefined;
+      const baseUrl = baseUrls[provider];
+      return baseUrl === undefined
+        ? { apiKey: auth.credentials }
+        : { apiKey: auth.credentials, baseUrl };
     },
-    getJson: createJsonClient(),
-    postJson: createPostJsonClient(),
+    getJson: deps.getJson ?? createJsonClient(),
+    postJson: deps.postJson ?? createPostJsonClient(),
   }).catch((error: unknown) => {
     if (error instanceof QuotaError) return quotaErrorReport(error.code, error.retryAfterMs);
     throw error;

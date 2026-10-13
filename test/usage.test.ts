@@ -149,6 +149,72 @@ test("fetch end-to-end through an exec adapter bound in settings", async () => {
   assert.equal(report.windows[0]!.usedPct, 50);
 });
 
+test("hidden providers stay out of global and session discovery", async () => {
+  const spawn = readySpawn({ "kimi-coding": "sk-kimi", deepseek: "sk-ds" });
+  const readPluginConfig = async () => ({ hide: ["kimi-coding"] });
+  const global = await discover({ kind: "global" }, deps({ spawn, readPluginConfig }));
+  assert.deepEqual(
+    global.map((a) => (a.input as { provider: string }).provider),
+    ["deepseek"],
+  );
+  const session = await discover(
+    { kind: "session", provider: "pi", model: "kimi-coding/k2", env: { HOME: "/h" } },
+    deps({ spawn, readPluginConfig }),
+  );
+  assert.deepEqual(session, []);
+});
+
+test("fetch resolves the provider baseUrl from models.json for relay adapters", async () => {
+  const settings = { quotaUsage: { providers: { packy: { adapter: "new-api" } } } };
+  const requested: string[] = [];
+  const getJson = async (url: string) => {
+    requested.push(url);
+    const { QuotaError } = await import("@astrosheep/pi-quota/query");
+    throw new QuotaError("http");
+  };
+  const report = await fetchUsage(
+    { provider: "packy", agentDir: AGENT_DIR },
+    deps({
+      spawn: readySpawn({ packy: "sk-relay" }),
+      readSettings: async () => settings,
+      readBaseUrls: async () => ({ packy: "https://www.packyapi.com/v1" }),
+      getJson,
+    }),
+  );
+  assert.deepEqual(report, { status: "error", error: "Provider service unavailable" });
+  assert.ok(
+    requested.every((url) => url.startsWith("https://www.packyapi.com/")),
+    `expected relay URLs, got ${requested.join(", ")}`,
+  );
+  assert.ok(requested.length > 0, "adapter never queried");
+});
+
+test("fetch without a configured baseUrl reports unsupported-auth without querying", async () => {
+  const settings = { quotaUsage: { providers: { packy: { adapter: "new-api" } } } };
+  const requested: string[] = [];
+  const getJson = async (url: string) => {
+    requested.push(url);
+    throw new Error("should never query without a baseUrl");
+  };
+  const report = await fetchUsage(
+    { provider: "packy", agentDir: AGENT_DIR },
+    deps({
+      spawn: readySpawn({ packy: "sk-relay" }),
+      readSettings: async () => settings,
+      readBaseUrls: async () => ({}),
+      getJson,
+    }),
+  );
+  assert.deepEqual(report, {
+    status: "unavailable",
+    problem: {
+      kind: "no_quota",
+      detail: "This provider's credentials or endpoint cannot be queried for quota",
+    },
+  });
+  assert.equal(requested.length, 0);
+});
+
 test("fetch treats a dying pi auth check as an auth rejection (known limitation)", async () => {
   // officialAuth converts any getAuth failure into QuotaError('auth'), so a
   // missing pi binary surfaces as 'rejected' rather than a raw spawn error.
