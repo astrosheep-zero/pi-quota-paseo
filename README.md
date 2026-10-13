@@ -10,7 +10,7 @@ A [Paseo](https://paseo.sh) **usage source plugin** that bridges [@astrosheep/pi
 
 ## Icons
 
-Each provider gets its own usage source: Codex, Kimi, DeepSeek and OpenCode Go use brand logos; other providers use a white pixel initial on a rounded color tile. Colors are stable hashes of provider names (same initials may still share a color).
+Each provider gets its own usage source: Codex, Kimi, DeepSeek and OpenCode Go use brand logos; other providers use a normal-width, medium-weight initial in muted ink, with no background or decorative cuts. Colors are stable hashes of provider names (same initials may still share a color).
 
 Sources register at plugin load. Providers added later still appear automatically under a **Pi Quota** catch-all with the pixel Pi logo; run `paseo plugin reload pi-quota-paseo` to give them individual icons. Source IDs changed in 0.2.0, so existing usage pins may need re-pinning.
 

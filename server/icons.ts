@@ -1,7 +1,7 @@
-// Prebuilt, font-free initial tiles. A name hash chooses a stable background.
+// Prebuilt system-medium letter outlines. A name hash chooses a muted ink color.
 export const TILE_COLORS = [
-  "#0d9488", "#ea580c", "#7c3aed", "#16a34a", "#dc2626",
-  "#2563eb", "#db2777", "#d97706", "#0891b2", "#65a30d",
+  "#7A8CA0", "#8C8495", "#89907E", "#7E8C86", "#92897E",
+  "#788995", "#9F8679", "#8D8791", "#858B82", "#7C9293",
 ];
 
 export function tileColor(provider: string): string {

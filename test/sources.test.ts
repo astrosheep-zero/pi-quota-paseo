@@ -15,7 +15,7 @@ test("letter tiles are stable, font-free SVGs; same initials can have different 
   assert.equal(tileColor("cctq"), tileColor("cctq"));
   assert.notEqual(tileColor("cctq"), tileColor("codex-for"));
   const svg = await readFile(new URL(`../${letterIconPath("micu-ant")}`, import.meta.url), "utf8");
-  assert.match(svg, /fill="#fff"/);
+  assert.doesNotMatch(svg, /<rect|fill="#fff"/);
   assert.match(svg, new RegExp(`fill="${tileColor("micu-ant")}"`));
   assert.doesNotMatch(svg, /<text|<script|href=/);
 });
