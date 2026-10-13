@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import type { UsageSourceRegistration } from "@getpaseo/plugin/server/usage";
 import { buildSourcePlan, registerSources } from "../server/sources.ts";
-import { letterIconPath, letterTileSvg, tileColor, tileLetter } from "../server/icons.ts";
+import { letterIconPath, tileColor, tileLetter } from "../server/icons.ts";
 import type { UsageDeps } from "../server/usage.ts";
 
 const providerOf = (account: { input: unknown }) => (account.input as { provider: string }).provider;
@@ -14,10 +14,10 @@ test("letter tiles are stable, font-free SVGs; same initials can have different 
   assert.equal(letterIconPath("未知"), "icon.svg");
   assert.equal(tileColor("cctq"), tileColor("cctq"));
   assert.notEqual(tileColor("cctq"), tileColor("codex-for"));
-  const svg = letterTileSvg("micu-ant");
+  const svg = await readFile(new URL(`../${letterIconPath("micu-ant")}`, import.meta.url), "utf8");
   assert.match(svg, /fill="#fff"/);
+  assert.match(svg, new RegExp(`fill="${tileColor("micu-ant")}"`));
   assert.doesNotMatch(svg, /<text|<script|href=/);
-  assert.equal(await readFile(new URL(`../${letterIconPath("micu-ant")}`, import.meta.url), "utf8"), svg);
 });
 
 test("source plan gives brands their logo and configured providers their initial; aliases stay absorbed", async () => {

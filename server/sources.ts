@@ -47,20 +47,19 @@ export function registerSources(
       label,
       icon,
       input: inputSchema,
-      discover: (scope) =>
-        discover(scope, deps, { includeProvider: (p) => p === provider, dropAccountLabels: true }),
+      discover: async (scope) =>
+        (await discover(scope, deps, (p) => p === provider))
+          .map(({ label: _label, ...account }) => account),
       fetch: (input) => fetchUsage(input, deps),
     });
   }
-  // Catch-all: providers that appear after plugin load (or every provider,
-  // when the load-time plan failed and the plan is empty) still show up
-  // without a daemon restart, wearing the default icon.
+  // Late providers stay visible without a restart; a reload gives them icons.
   server.registerUsageSource({
     id: CATCH_ALL_ID,
     label: "Pi Quota",
     icon: DEFAULT_ICON,
     input: inputSchema,
-    discover: (scope) => discover(scope, deps, { includeProvider: (p) => !loaded.has(p) }),
+    discover: (scope) => discover(scope, deps, (p) => !loaded.has(p)),
     fetch: (input) => fetchUsage(input, deps),
   });
 }

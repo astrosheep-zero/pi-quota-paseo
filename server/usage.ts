@@ -96,17 +96,10 @@ function accountKey(provider: string, auth: PiAuthReady, agentDir: string): stri
   return hashAccountKey(auth.credentials);
 }
 
-export interface DiscoverOptions {
-  /** Restrict which providers get enumerated (per-provider sources use this). */
-  includeProvider?: (provider: string) => boolean;
-  /** Omit account labels; per-provider cards already title the source label. */
-  dropAccountLabels?: boolean;
-}
-
 export async function discover(
   scope: UsageScope,
   deps: UsageDeps = {},
-  options: DiscoverOptions = {},
+  include: (provider: string) => boolean = () => true,
 ): Promise<UsageAccount[]> {
   const env = scope.kind === "session" ? scope.env : (deps.env ?? processEnvRecord());
   const agentDir = resolveAgentDir(env);
@@ -118,7 +111,6 @@ export async function discover(
   const hidden = new Set(pluginConfig.hide);
   const { registry, aliases } = safeCompose(settings);
   const settingsBacked = settingsBackedProviders(settings);
-  const include = options.includeProvider;
 
   let providers: string[];
   if (scope.kind === "global") {
@@ -129,7 +121,7 @@ export async function discover(
       .map((adapter) => adapter.provider)
       .filter(
         (provider) =>
-          aliases[provider] === undefined && !hidden.has(provider) && (include?.(provider) ?? true),
+          aliases[provider] === undefined && !hidden.has(provider) && include(provider),
       );
   } else {
     if (scope.provider !== "pi") return [];
@@ -138,7 +130,7 @@ export async function discover(
       provider === undefined ||
       hidden.has(provider) ||
       !registry.get(provider) ||
-      !(include?.(provider) ?? true)
+      !include(provider)
     )
       return [];
     providers = [provider];
@@ -153,7 +145,7 @@ export async function discover(
     if (settingsBacked.has(provider)) {
       accounts.push({
         key: hashAccountKey(`settings:${provider}@${agentDir}`),
-        ...(options.dropAccountLabels ? {} : { label: adapter.label }),
+        label: adapter.label,
         harness: "Pi",
         input,
       });
@@ -172,7 +164,7 @@ export async function discover(
     if (!auth) continue;
     accounts.push({
       key: accountKey(authProvider, auth, agentDir),
-      ...(options.dropAccountLabels ? {} : { label: adapter.label }),
+      label: adapter.label,
       harness: "Pi",
       input,
     });
