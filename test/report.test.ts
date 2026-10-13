@@ -3,73 +3,72 @@ import test from "node:test";
 import { snapshotToReport } from "../server/report.ts";
 import type { QuotaSnapshot } from "@astrosheep/pi-quota/query";
 
-test("windows convert remaining percent to used percent with duration names", () => {
-  const report = snapshotToReport({
-    windows: [
-      { id: "shared/primary_window", label: "5h", remainingPercent: 72, resetAt: 1_800_000_000_000, durationSeconds: 18000 },
-      { id: "shared/secondary_window", label: "1w", remainingPercent: null, resetAt: null, durationSeconds: 604800 },
-    ],
-    fetchedAt: 1_700_000_000_000,
-  });
+const empty: QuotaSnapshot = { balances: [], limits: [], spending: [], fetchedAt: 1_700_000_000_000 };
+
+test("limits retain source identity even with matching durations, and unknown stays unknown", () => {
+  const report = snapshotToReport({ ...empty, limits: [
+    { id: "primary", label: "5h", remainingPercent: 72, resetAt: 1_800_000_000_000, durationSeconds: 18000 },
+    { id: "other", label: "5h", remainingPercent: null, resetAt: null, durationSeconds: 18000 },
+    { id: "scoped", label: "5h", remainingPercent: 15, resetAt: null, durationSeconds: 18000, scope: "GPT-5.5-Codex" },
+  ] });
   assert.equal(report.status, "available");
   if (report.status !== "available") return;
-  assert.equal(report.windows.length, 2);
-  const [fiveHour, weekly] = report.windows;
-  assert.equal(fiveHour.id, "five_hour");
-  assert.equal(fiveHour.usedPct, 28);
-  assert.equal(fiveHour.remainingPct, 72);
-  assert.equal(fiveHour.resetsAt, new Date(1_800_000_000_000).toISOString());
-  assert.equal(fiveHour.summary, true);
-  assert.equal(fiveHour.tone, "ok");
-  assert.equal(weekly.id, "weekly");
-  assert.equal(weekly.usedPct, null);
-  assert.equal(weekly.remainingPct, null);
-  assert.equal(weekly.tone, "default");
+  const [first, second, scoped] = report.windows;
+  assert.deepEqual(report.windows.map(w => w.id), ["primary", "other", "scoped"]);
+  assert.equal(first.usedPct, 28);
+  assert.equal(first.remainingPct, 72);
+  assert.equal(first.resetsAt, new Date(1_800_000_000_000).toISOString());
+  assert.equal(first.summary, true);
+  assert.equal(second.usedPct, null);
+  assert.equal(second.remainingPct, null);
+  assert.equal(scoped.label, "GPT-5.5-Codex · 5h");
+  assert.equal(scoped.summary, undefined);
+  assert.equal(scoped.tone, "warning");
 });
 
-test("scoped windows keep their quota domain in id and label", () => {
-  const report = snapshotToReport({
-    windows: [
-      { id: "additional-0/primary_window", label: "5h", remainingPercent: 15, resetAt: null, durationSeconds: 18000, scope: "GPT-5.5-Codex" },
+test("multiple wallets, limits, and expenses preserve categories and labels", () => {
+  const report = snapshotToReport({ ...empty,
+    balances: [
+      { id: "main", label: "Wallet", currency: "USD", remaining: 12.5 },
+      { id: "yuan", label: "Yuan wallet", currency: "CNY", remaining: -2 },
     ],
-    fetchedAt: 1_700_000_000_000,
+    limits: [
+      { id: "main", label: "Quota", remainingPercent: 2, resetAt: null, amounts: { unit: "USD", limit: 50, used: 49, remaining: 1 } },
+      { id: "yuan", label: "Yuan quota", remainingPercent: 60, resetAt: null, amounts: { unit: "CNY", limit: 100, used: 40, remaining: 60 } },
+      { id: "token", label: "Token quota", remainingPercent: null, resetAt: null, amounts: { unit: "tokens", limit: null, used: 40, remaining: 60 } },
+      { id: "uncapped", label: "Uncapped", remainingPercent: null, resetAt: null, unlimited: true },
+    ],
+    spending: [
+      { id: "main", label: "Today", currency: "CNY", amount: 3.21, period: "today" },
+      { id: "all", label: "Lifetime", currency: "CNY", amount: 100, period: "lifetime" },
+    ],
   });
-  if (report.status !== "available") return;
-  const [window] = report.windows;
-  assert.equal(window.id, "gpt_5_5_codex:five_hour");
-  assert.equal(window.label, "GPT-5.5-Codex · 5-hour");
-  assert.equal(window.summary, undefined);
-  assert.equal(window.tone, "warning"); // 15% remaining = 85% used, inside the 70..90 band
+  if (report.status !== "available") assert.fail("not available");
+  assert.deepEqual(report.balances, [
+    { id: "balance:main", label: "Wallet", remaining: 12.5, unit: "usd", tone: "ok" },
+    { id: "limit:main", label: "Quota", used: 49, remaining: 1, limit: 50, unit: "usd", tone: "danger" },
+    { id: "limit:token", label: "Token quota", used: 40, remaining: 60, limit: null, unit: "tokens", tone: "default" },
+  ]);
+  const details = Object.fromEntries((report.details ?? []).map(d => [d.id, d.value]));
+  assert.equal(details["balance:yuan"], "-2 CNY");
+  assert.equal(details["limit:yuan"], "60 CNY of 100 CNY");
+  assert.equal(details["limit:uncapped"], "Unlimited");
+  assert.equal(details["spend:main"], "3.21 CNY");
+  assert.equal(details["spend:all"], "100 CNY");
 });
 
-test("USD balances map to usage balances; other currencies become details", () => {
-  const report = snapshotToReport({
-    windows: [],
-    balance: { currency: "USD", remaining: 12.5 },
-    allowance: { currency: "CNY", limit: 100, used: 40, remaining: 60 },
-    spend: { currency: "CNY", today: 3.21, lifetime: 100 },
-    fetchedAt: 1_700_000_000_000,
-  });
+test("spending-only reports and missing monetary caps do not fabricate zero", () => {
+  const report = snapshotToReport({ ...empty, spending: [
+    { id: "today", label: "Today", currency: "USD", amount: 1, period: "today" },
+  ] });
+  assert.equal(report.status, "available");
   if (report.status !== "available") return;
-  assert.deepEqual(report.balances, [
-    { id: "balance", label: "Balance", remaining: 12.5, unit: "usd", tone: "ok" },
-  ]);
-  const details = Object.fromEntries((report.details ?? []).map((d) => [d.id, d.value]));
-  assert.equal(details.allowance, "60 CNY of 100 CNY");
-  assert.equal(details.spend_today, "3.21 CNY");
-  assert.equal(details.spend_lifetime, "100 CNY");
-});
-
-test("USD allowance becomes a metered balance and unlimited balance a detail", () => {
-  const report = snapshotToReport({
-    windows: [],
-    balance: { currency: "USD", remaining: 0, unlimited: true },
-    allowance: { currency: "USD", limit: 50, used: 49, remaining: 1 },
-    fetchedAt: 1_700_000_000_000,
-  });
-  if (report.status !== "available") return;
-  assert.deepEqual(report.balances, [
-    { id: "allowance", label: "Quota", used: 49, remaining: 1, limit: 50, unit: "usd", tone: "danger" },
-  ]);
-  assert.deepEqual(report.details, [{ id: "balance", label: "Balance", value: "Unlimited" }]);
+  assert.deepEqual(report.windows, []);
+  assert.equal(report.balances, undefined);
+  assert.equal(report.details?.[0].value, "1 USD");
+  const unknownCap = snapshotToReport({ ...empty, limits: [
+    { id: "x", label: "Quota", remainingPercent: null, resetAt: null, amounts: { unit: "CNY", limit: null, used: 2, remaining: 8 } },
+  ] });
+  if (unknownCap.status !== "available") assert.fail("not available");
+  assert.equal(unknownCap.details?.[0].value, "8 CNY");
 });

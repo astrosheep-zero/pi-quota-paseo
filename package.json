@@ -1,6 +1,6 @@
 {
   "name": "pi-quota-paseo",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Paseo usage source bridging pi-quota adapters (Pi provider quota in Paseo's native usage UI)",
@@ -24,7 +24,7 @@
     "node": ">=22.18"
   },
   "dependencies": {
-    "@astrosheep/pi-quota": "^0.12.2",
+    "@astrosheep/pi-quota": "^0.13.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

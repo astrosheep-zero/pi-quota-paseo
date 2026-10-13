@@ -1,111 +1,89 @@
 import {
   balanceToneFromRemaining,
   toneFromUsedPct,
-  usedPctOf,
   windowFromReportedDuration,
   type UsageBalance,
   type UsageDetail,
   type UsageReport,
   type UsageWindow,
 } from "@getpaseo/plugin/server/usage";
-import type { QuotaAllowance, QuotaSnapshot, QuotaWindow } from "@astrosheep/pi-quota/query";
+import type { QuotaSnapshot, UsageLimit } from "@astrosheep/pi-quota/query";
 
-/** Fold a quota scope or fallback id down to a stable, collision-safe window id part. */
-function slugify(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return slug || "window";
-}
-
-function usageWindow(window: QuotaWindow): UsageWindow {
-  const usedPct =
-    window.remainingPercent === null
-      ? null
-      : Math.min(100, Math.max(0, 100 - window.remainingPercent));
-  return windowFromReportedDuration({
-    durationSeconds: window.durationSeconds,
-    scope: window.scope ? { id: slugify(window.scope), label: window.scope } : undefined,
-    unknown: { id: slugify(window.id), label: window.label, shortLabel: window.label },
+function usageWindow(limit: UsageLimit): UsageWindow {
+  const usedPct = limit.remainingPercent === null ? null : 100 - limit.remainingPercent;
+  const window = windowFromReportedDuration({
+    durationSeconds: limit.durationSeconds ?? null,
+    scope: limit.scope ? { id: limit.scope, label: limit.scope } : undefined,
+    unknown: { id: limit.id, label: limit.label, shortLabel: limit.label },
     utilizationPct: usedPct,
-    resetsAt: window.resetAt === null ? null : new Date(window.resetAt).toISOString(),
-    // Unscoped windows are the account's headline limits; scoped ones stay opt-in.
-    summary: window.scope === undefined,
+    resetsAt: limit.resetAt === null ? null : new Date(limit.resetAt).toISOString(),
+    summary: limit.scope === undefined,
     tone: toneFromUsedPct(usedPct),
   });
-}
-
-function formatAmount(currency: string, amount: number): string {
-  const rounded = Math.round(amount * 100) / 100;
-  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(2)} ${currency}`;
-}
-
-function allowanceBalance(allowance: QuotaAllowance): UsageBalance {
-  const usedPct = usedPctOf(allowance.used, allowance.limit);
-  return {
-    id: "allowance",
-    label: "Quota",
-    used: allowance.used,
-    remaining: allowance.remaining,
-    limit: allowance.limit,
-    unit: "usd",
-    tone: toneFromUsedPct(usedPct),
+  // Duration names are presentation, not identity: two limits can both be 5h.
+  return { ...window, id: limit.id,
+    label: limit.scope ? `${limit.scope} · ${limit.label}` : limit.label,
+    shortLabel: limit.label,
   };
 }
 
-/**
- * pi-quota snapshots carry ISO currencies; Paseo balances only meter
- * usd/credits/requests/tokens. Non-USD amounts stay fully visible as details
- * instead of being silently converted or dropped.
- */
+function formatAmount(unit: string, amount: number): string {
+  const rounded = Math.round(amount * 100) / 100;
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(2)} ${unit}`;
+}
+
+function meterUnit(unit: string): UsageBalance["unit"] | undefined {
+  if (unit === "USD") return "usd";
+  if (unit === "credits" || unit === "requests" || unit === "tokens") return unit;
+  return undefined;
+}
+
+/** Preserve semantic categories; use host meters only for units they support. */
 export function snapshotToReport(snapshot: QuotaSnapshot): UsageReport {
-  const windows = snapshot.windows.map(usageWindow);
+  const windows: UsageWindow[] = [];
   const balances: UsageBalance[] = [];
   const details: UsageDetail[] = [];
 
-  const { balance, allowance, spend } = snapshot;
-  if (balance !== undefined) {
-    if (balance.unlimited === true) {
-      details.push({ id: "balance", label: "Balance", value: "Unlimited" });
-    } else if (balance.currency === "USD") {
-      balances.push({
-        id: "balance",
-        label: "Balance",
-        remaining: balance.remaining,
-        unit: "usd",
-        tone: balanceToneFromRemaining(balance.remaining),
-      });
+  for (const balance of snapshot.balances) {
+    const id = `balance:${balance.id}`;
+    const tone = balanceToneFromRemaining(balance.remaining);
+    if (balance.currency === "USD") {
+      balances.push({ id, label: balance.label, remaining: balance.remaining, unit: "usd", tone });
     } else {
-      details.push({
-        id: "balance",
-        label: "Balance",
-        value: formatAmount(balance.currency, balance.remaining),
-        tone: balanceToneFromRemaining(balance.remaining),
-      });
+      details.push({ id, label: balance.label, value: formatAmount(balance.currency, balance.remaining), tone });
     }
   }
-  if (allowance !== undefined) {
-    if (allowance.currency === "USD") {
-      balances.push(allowanceBalance(allowance));
+  for (const limit of snapshot.limits) {
+    const id = `limit:${limit.id}`;
+    const label = limit.scope ? `${limit.scope} · ${limit.label}` : limit.label;
+    if (limit.unlimited) {
+      details.push({ id, label, value: "Unlimited" });
+    } else if (limit.durationSeconds !== undefined || limit.amounts === undefined) {
+      windows.push(usageWindow(limit));
     } else {
-      details.push({
-        id: "allowance",
-        label: "Quota",
-        value: `${formatAmount(allowance.currency, allowance.remaining)} of ${formatAmount(allowance.currency, allowance.limit)}`,
-      });
+      const amounts = limit.amounts;
+      const unit = meterUnit(amounts.unit);
+      if (unit) {
+        balances.push({
+          id, label, used: amounts.used, remaining: amounts.remaining, limit: amounts.limit, unit,
+          tone: toneFromUsedPct(limit.remainingPercent === null ? null : 100 - limit.remainingPercent),
+          ...(limit.resetAt === null ? {} : { resetsAt: new Date(limit.resetAt).toISOString() }),
+        });
+      } else {
+        details.push({ id, label, value: amounts.limit === null
+          ? formatAmount(amounts.unit, amounts.remaining)
+          : `${formatAmount(amounts.unit, amounts.remaining)} of ${formatAmount(amounts.unit, amounts.limit)}` });
+      }
     }
   }
-  if (spend !== undefined) {
-    if (spend.today !== undefined)
-      details.push({ id: "spend_today", label: "Spent today", value: formatAmount(spend.currency, spend.today) });
-    if (spend.lifetime !== undefined)
-      details.push({ id: "spend_lifetime", label: "Spent lifetime", value: formatAmount(spend.currency, spend.lifetime) });
+  for (const spend of snapshot.spending) {
+    const period = spend.period === "today" ? "Today" : "Lifetime";
+    const label = spend.label.toLowerCase() === period.toLowerCase() ? spend.label : `${spend.label} · ${period}`;
+    details.push({ id: `spend:${spend.id}`, label, value: formatAmount(spend.currency, spend.amount) });
   }
 
   return {
-    status: "available",
-    windows,
+    status: "available", windows,
     ...(balances.length > 0 ? { balances } : {}),
     ...(details.length > 0 ? { details } : {}),
   };

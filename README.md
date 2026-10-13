@@ -16,6 +16,12 @@ Sources register at plugin load. Providers added later still appear automaticall
 
 Letter SVGs are prebuilt, font-free assets — nothing is written into an installed plugin directory. Regenerate them with `npm run generate-icons`. Icon attribution is in [NOTICE](./NOTICE).
 
+## Quota model (0.3)
+
+Uses pi-quota 0.13's separate `balances`, `limits`, and `spending` arrays. Wallet money stays distinct from capped or unlimited allowances; all entries are preserved. Spending details identify Today versus Lifetime. Unsupported meter currencies appear as text details.
+
+Window IDs now retain the adapter's identity rather than being derived from duration, so two 5-hour limits remain distinct. Existing window pins may need re-pinning. Custom/exec adapters must emit the new snapshot contract; see pi-quota's migration guide. Paseo's summary still only shows windows, not wallet balances.
+
 ## Configure
 
 Hide providers from all views with `~/.pi/agent/pi-quota-paseo.json` (resolved from the same agent directory Pi uses):

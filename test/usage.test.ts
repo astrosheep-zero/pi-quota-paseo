@@ -134,7 +134,8 @@ test("fetch throws when the provider lost its adapter since discovery", async ()
 
 test("fetch end-to-end through an exec adapter bound in settings", async () => {
   const snapshot = {
-    windows: [{ id: "w", label: "1d", remainingPercent: 50, resetAt: null, durationSeconds: 86400 }],
+    balances: [], spending: [],
+    limits: [{ id: "w", label: "1d", remainingPercent: 50, resetAt: null, durationSeconds: 86400 }],
     fetchedAt: 0,
   };
   const command = [process.execPath, "-e", `console.log(JSON.stringify(${JSON.stringify(snapshot)}))`];
@@ -145,7 +146,7 @@ test("fetch end-to-end through an exec adapter bound in settings", async () => {
   );
   if (report.status !== "available") assert.fail(`expected available, got ${JSON.stringify(report)}`);
   assert.equal(report.windows.length, 1);
-  assert.equal(report.windows[0]!.id, "86400s"); // only 5h/weekly get named ids
+  assert.equal(report.windows[0]!.id, "w"); // source identity, not duration
   assert.equal(report.windows[0]!.usedPct, 50);
 });
 
